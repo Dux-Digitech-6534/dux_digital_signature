@@ -7,7 +7,9 @@ description = "Reusable text-based digital signature support for Frappe and ERPN
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
-dependencies = []
+dependencies = [
+    "PyQRCode>=1.2.1",
+]
 
 [build-system]
 requires = ["flit_core >=3.4,<4"]

@@ -43,7 +43,7 @@ def apply_digital_signature(doc, method=None):
 
 
 def _get_enabled_setups(doctype):
-	if not frappe.db.table_exists("Digital Signature Setup"):
+	if not _doctype_table_exists("Digital Signature Setup"):
 		return []
 
 	return frappe.get_all(
@@ -51,6 +51,13 @@ def _get_enabled_setups(doctype):
 		filters={"enabled": 1, "document_type": doctype},
 		fields=["name", "signature_trigger", "final_approval_state", "signer", "fixed_user"],
 	)
+
+
+def _doctype_table_exists(doctype):
+	try:
+		return frappe.db.table_exists(doctype)
+	except Exception:
+		return bool(frappe.db.exists("DocType", doctype))
 
 
 def _has_signature_fields(doc):
@@ -203,13 +210,13 @@ def get_signature_html(doctype, name):
 	return "".join(lines)
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_signature_qr_svg(doctype, name):
-	doc = frappe.get_doc(doctype, name)
-	if not getattr(doc, "custom_is_digitally_signed", 0):
+	signature = _get_signature_values(doctype, name)
+	if not signature or not signature.get("custom_is_digitally_signed"):
 		frappe.throw("Document is not digitally signed.")
 
-	qr_data = getattr(doc, "custom_signature_qr_data", None) or getattr(doc, "custom_signature_hash", None) or doc.name
+	qr_data = signature.get("custom_signature_qr_data") or signature.get("custom_signature_hash") or name
 
 	import pyqrcode
 
@@ -217,7 +224,51 @@ def get_signature_qr_svg(doctype, name):
 	pyqrcode.create(qr_data, error="M").svg(buffer, scale=3, quiet_zone=1)
 
 	frappe.local.response["type"] = "download"
-	frappe.local.response["filename"] = f"{doc.name}-digital-signature-qr.svg"
+	frappe.local.response["filename"] = f"{name}-digital-signature-qr.svg"
 	frappe.local.response["filecontent"] = buffer.getvalue()
 	frappe.local.response["content_type"] = "image/svg+xml"
 	frappe.local.response["display_content_as"] = "inline"
+
+
+def _get_signature_values(doctype, name):
+	if not frappe.db.exists("DocType", doctype):
+		return None
+
+	meta = frappe.get_meta(doctype)
+	fieldnames = {field.fieldname for field in meta.fields}
+	required_fields = {
+		"custom_is_digitally_signed",
+		"custom_signature_qr_data",
+		"custom_signature_hash",
+	}
+	if not required_fields.issubset(fieldnames):
+		return None
+
+	return frappe.db.get_value(
+		doctype,
+		name,
+		["custom_is_digitally_signed", "custom_signature_qr_data", "custom_signature_hash"],
+		as_dict=True,
+	)
+
+
+@frappe.whitelist()
+def get_user_details(user):
+	if not user:
+		return {}
+
+	full_name = frappe.db.get_value("User", user, "full_name") or user
+	designation = ""
+
+	try:
+		if frappe.db.exists("DocType", "Employee"):
+			employee = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, ["designation"], as_dict=True)
+			designation = (employee or {}).get("designation") or ""
+	except Exception:
+		designation = ""
+
+	return {
+		"full_name": full_name,
+		"designation": designation,
+		"signature_text": f"Digitally signed by {full_name}",
+	}
