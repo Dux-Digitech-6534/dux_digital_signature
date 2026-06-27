@@ -1,0 +1,108 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:DDS-{#####}",
+ "creation": "2026-06-27 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "document_type",
+  "signature_trigger",
+  "final_approval_state",
+  "signer",
+  "fixed_user",
+  "auto_create_fields",
+  "is_setup_completed",
+  "last_setup_on"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Document Type",
+   "options": "DocType",
+   "reqd": 1
+  },
+  {
+   "fieldname": "signature_trigger",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Signature Trigger",
+   "options": "On Submit\nOn Final Approval",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.signature_trigger == 'On Final Approval'",
+   "fieldname": "final_approval_state",
+   "fieldtype": "Data",
+   "label": "Final Approval State",
+   "mandatory_depends_on": "eval:doc.signature_trigger == 'On Final Approval'"
+  },
+  {
+   "fieldname": "signer",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Signer",
+   "options": "Current User\nFixed User",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.signer == 'Fixed User'",
+   "fieldname": "fixed_user",
+   "fieldtype": "Link",
+   "label": "Fixed User",
+   "mandatory_depends_on": "eval:doc.signer == 'Fixed User'",
+   "options": "User"
+  },
+  {
+   "fieldname": "auto_create_fields",
+   "fieldtype": "Button",
+   "label": "Create Signature Fields"
+  },
+  {
+   "fieldname": "is_setup_completed",
+   "fieldtype": "Check",
+   "label": "Is Setup Completed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_setup_on",
+   "fieldtype": "Datetime",
+   "label": "Last Setup On",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-27 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Dux Digital Signature",
+ "name": "Digital Signature Setup",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
