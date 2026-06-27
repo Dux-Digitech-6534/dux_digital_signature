@@ -4,26 +4,23 @@ frappe.ui.form.on("Digital Signature User", {
 			return;
 		}
 
-		frappe.call({
-			method: "dux_digital_signature.api.get_user_details",
-			args: {
-				user: frm.doc.user,
-			},
-			callback(r) {
-				const details = r.message || {};
+		frappe.db.get_value("User", frm.doc.user, "full_name").then((r) => {
+			const full_name = (r.message && r.message.full_name) || frm.doc.user;
 
-				if (details.full_name && !frm.doc.full_name) {
-					frm.set_value("full_name", details.full_name);
-				}
+			if (!frm.doc.full_name) {
+				frm.set_value("full_name", full_name);
+			}
 
-				if (details.designation && !frm.doc.designation) {
-					frm.set_value("designation", details.designation);
-				}
+			if (!frm.doc.signature_text) {
+				frm.set_value("signature_text", `Digitally signed by ${full_name}`);
+			}
+		});
 
-				if (details.signature_text && !frm.doc.signature_text) {
-					frm.set_value("signature_text", details.signature_text);
-				}
-			},
+		frappe.db.get_value("Employee", { user_id: frm.doc.user, status: "Active" }, "designation").then((r) => {
+			const designation = r.message && r.message.designation;
+			if (designation && !frm.doc.designation) {
+				frm.set_value("designation", designation);
+			}
 		});
 	},
 });
