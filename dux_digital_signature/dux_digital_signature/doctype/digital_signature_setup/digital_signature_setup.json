@@ -13,6 +13,9 @@
   "signer",
   "fixed_user",
   "auto_create_fields",
+  "print_format_section",
+  "print_format",
+  "add_signature_to_print_format",
   "is_setup_completed",
   "last_setup_on"
  ],
@@ -67,6 +70,24 @@
    "fieldname": "auto_create_fields",
    "fieldtype": "Button",
    "label": "Create Signature Fields"
+  },
+  {
+   "fieldname": "print_format_section",
+   "fieldtype": "Section Break",
+   "label": "Print Format"
+  },
+  {
+   "depends_on": "eval:doc.document_type",
+   "fieldname": "print_format",
+   "fieldtype": "Link",
+   "label": "Print Format",
+   "options": "Print Format"
+  },
+  {
+   "depends_on": "eval:doc.document_type && doc.print_format",
+   "fieldname": "add_signature_to_print_format",
+   "fieldtype": "Button",
+   "label": "Add Signature To Print Format"
   },
   {
    "fieldname": "is_setup_completed",
