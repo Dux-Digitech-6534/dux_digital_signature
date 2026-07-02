@@ -35,14 +35,16 @@ SIGNATURE_FIELDS = [
 		"fieldname": "custom_is_digitally_signed",
 		"label": "Is Digitally Signed",
 		"fieldtype": "Check",
-		"hidden": 0,
+		"hidden": 1,
+		"print_hide": 1,
 		"read_only": 1,
 	},
 	{
 		"fieldname": "custom_signed_by",
 		"label": "Signed By",
 		"fieldtype": "Data",
-		"hidden": 0,
+		"hidden": 1,
+		"print_hide": 1,
 		"read_only": 1,
 	},
 	{
@@ -50,49 +52,56 @@ SIGNATURE_FIELDS = [
 		"label": "Signed By User",
 		"fieldtype": "Link",
 		"options": "User",
-		"hidden": 0,
+		"hidden": 1,
+		"print_hide": 1,
 		"read_only": 1,
 	},
 	{
 		"fieldname": "custom_signed_on",
 		"label": "Signed On",
 		"fieldtype": "Datetime",
-		"hidden": 0,
+		"hidden": 1,
+		"print_hide": 1,
 		"read_only": 1,
 	},
 	{
 		"fieldname": "custom_signature_designation",
 		"label": "Signature Designation",
 		"fieldtype": "Data",
-		"hidden": 0,
+		"hidden": 1,
+		"print_hide": 1,
 		"read_only": 1,
 	},
 	{
 		"fieldname": "custom_signature_text",
 		"label": "Signature Text",
 		"fieldtype": "Small Text",
-		"hidden": 0,
+		"hidden": 1,
+		"print_hide": 1,
 		"read_only": 1,
 	},
 	{
 		"fieldname": "custom_signature_image",
 		"label": "Signature Image",
 		"fieldtype": "Attach Image",
-		"hidden": 0,
+		"hidden": 1,
+		"print_hide": 1,
 		"read_only": 1,
 	},
 	{
 		"fieldname": "custom_signature_hash",
 		"label": "Signature Hash",
 		"fieldtype": "Small Text",
-		"hidden": 0,
+		"hidden": 1,
+		"print_hide": 1,
 		"read_only": 1,
 	},
 	{
 		"fieldname": "custom_signature_qr_data",
 		"label": "Signature QR Data",
 		"fieldtype": "Long Text",
-		"hidden": 0,
+		"hidden": 1,
+		"print_hide": 1,
 		"read_only": 1,
 	},
 ]
@@ -187,7 +196,7 @@ def _update_existing_custom_field(doctype, field):
 	custom_field = frappe.get_doc("Custom Field", custom_field_name)
 	updated = False
 
-	for property_name in ("hidden", "read_only", "label", "fieldtype", "options"):
+	for property_name in ("hidden", "print_hide", "read_only", "label", "fieldtype", "options"):
 		if property_name not in field:
 			continue
 
