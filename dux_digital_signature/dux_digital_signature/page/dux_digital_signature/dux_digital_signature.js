@@ -492,6 +492,8 @@
 			this.root.querySelector("[data-final-approval]").value = "";
 			this.setFixedUser("");
 			this.setPrintFormat("");
+			this.setPrintFormatUpdateMode("Update Selected Print Format");
+			this.setSignaturePlacement("Existing Print Format Signature Section");
 			this.bindConditionalFields();
 			this.updatePrintPreview();
 			this.showSetupForm();
@@ -508,6 +510,8 @@
 				this.root.querySelector("[data-final-approval]").value = doc.final_approval_state || "";
 				this.setFixedUser(doc.fixed_user || "");
 				this.setPrintFormat(doc.print_format || "");
+				this.setPrintFormatUpdateMode(doc.print_format_update_mode || "Update Selected Print Format");
+				this.setSignaturePlacement(doc.signature_placement || "Existing Print Format Signature Section");
 				this.bindConditionalFields();
 				this.updatePrintPreview();
 				this.showSetupForm();
@@ -650,6 +654,26 @@
 			if (input) input.value = value || "";
 		}
 
+		getPrintFormatUpdateMode() {
+			const input = this.root.querySelector("[data-print-format-update-mode]");
+			return input ? input.value : "Update Selected Print Format";
+		}
+
+		setPrintFormatUpdateMode(value) {
+			const input = this.root.querySelector("[data-print-format-update-mode]");
+			if (input) input.value = value || "Update Selected Print Format";
+		}
+
+		getSignaturePlacement() {
+			const input = this.root.querySelector("[data-signature-placement]");
+			return input ? input.value : "Existing Print Format Signature Section";
+		}
+
+		setSignaturePlacement(value) {
+			const input = this.root.querySelector("[data-signature-placement]");
+			if (input) input.value = value || "Existing Print Format Signature Section";
+		}
+
 		updatePrintPreview() {
 			const documentType = this.getDocumentType() || "Document";
 			const fixedUser = this.getFixedUser();
@@ -691,6 +715,8 @@
 				signer: "Fixed User",
 				fixed_user: this.getFixedUser(),
 				print_format: this.getPrintFormat(),
+				print_format_update_mode: this.getPrintFormatUpdateMode(),
+				signature_placement: this.getSignaturePlacement(),
 			};
 		}
 
@@ -740,6 +766,8 @@
 				doc.signer = "Fixed User";
 				doc.fixed_user = this.getFixedUser();
 				doc.print_format = this.getPrintFormat();
+				doc.print_format_update_mode = this.getPrintFormatUpdateMode();
+				doc.signature_placement = this.getSignaturePlacement();
 
 				frappe.call({
 					method: "run_doc_method",
@@ -907,6 +935,13 @@
 											<label>Print Format</label>
 											<div data-print-format-control></div>
 											<input type="text" data-print-format-fallback placeholder="Select Print Format">
+										</div>
+										<div class="field" style="margin-bottom:18px;">
+											<label>Signature Placement</label>
+											<select data-signature-placement>
+												<option value="Existing Print Format Signature Section">Existing Print Format Signature Section</option>
+												<option value="Default Signature Block">QR Digital Signature Block</option>
+											</select>
 										</div>
 										<div class="pf-actions">
 											<button class="btn-add-block" data-add-print>Add Signature Block</button>

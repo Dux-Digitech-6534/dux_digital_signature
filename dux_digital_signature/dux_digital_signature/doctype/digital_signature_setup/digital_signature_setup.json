@@ -15,6 +15,8 @@
   "auto_create_fields",
   "print_format_section",
   "print_format",
+  "print_format_update_mode",
+  "signature_placement",
   "add_signature_to_print_format",
   "is_setup_completed",
   "last_setup_on"
@@ -82,6 +84,21 @@
    "fieldtype": "Link",
    "label": "Print Format",
    "options": "Print Format"
+  },
+  {
+   "default": "Update Selected Print Format",
+   "fieldname": "print_format_update_mode",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Print Format Update Mode",
+   "options": "Create Custom Copy\nUpdate Selected Print Format"
+  },
+  {
+   "default": "Existing Print Format Signature Section",
+   "fieldname": "signature_placement",
+   "fieldtype": "Select",
+   "label": "Signature Placement",
+   "options": "Default Signature Block\nExisting Print Format Signature Section"
   },
   {
    "depends_on": "eval:doc.document_type && doc.print_format",

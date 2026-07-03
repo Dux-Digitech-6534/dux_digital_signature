@@ -3,6 +3,10 @@ from frappe.model.document import Document
 from frappe.utils import now
 
 
+SIGNATURE_PLACEMENT_DEFAULT = "Existing Print Format Signature Section"
+SIGNATURE_PLACEMENT_EXISTING_SECTION = "Existing Print Format Signature Section"
+PRINT_FORMAT_UPDATE_SELECTED = "Update Selected Print Format"
+
 SIGNATURE_PRINT_BLOCK = """{% if doc.custom_is_digitally_signed %}
 <div class="digital-signature-card" style="width:360px;margin:10px 0 0 auto;border:1px solid #d8e6dc;border-left:4px solid #2f9e44;background:#fbfffc;padding:8px 10px;font-size:10px;line-height:1.25;color:#4b5563;">
     <div style="display:flex;gap:10px;align-items:flex-start;">
@@ -28,6 +32,19 @@ SIGNATURE_PRINT_BLOCK = """{% if doc.custom_is_digitally_signed %}
     </div>
 </div>
 {% endif %}"""
+
+
+EXISTING_SIGNATURE_SECTION_BLOCK = """<div class="sig-detail">
+          {% if doc.custom_is_digitally_signed %}
+          Name <span>{{ doc.custom_signed_by or "" }}</span><br>
+          Designation <span>{{ doc.custom_signature_designation or "" }}</span><br>
+          Place <span></span> &nbsp; Date <span>{{ frappe.utils.format_datetime(doc.custom_signed_on) if doc.custom_signed_on else "" }}</span>
+          {% else %}
+          Name <span></span><br>
+          Designation <span></span><br>
+          Place <span></span> &nbsp; Date <span></span>
+          {% endif %}
+        </div>"""
 
 
 SIGNATURE_FIELDS = [
@@ -142,18 +159,25 @@ class DigitalSignatureSetup(Document):
 		if print_format.doc_type != self.document_type:
 			frappe.throw("Selected Print Format does not belong to {0}.".format(self.document_type))
 
-		if print_format.standard == "Yes":
-			frappe.throw("Standard Print Format cannot be edited. Please duplicate it and select the custom copy.")
-
-		if "dux_digital_signature.api.get_signature_qr_svg" in (print_format.html or ""):
-			return "Digital signature block already exists in {0}.".format(print_format.name)
+		signature_placement = self.signature_placement or SIGNATURE_PLACEMENT_DEFAULT
+		html = print_format.html or ""
+		if signature_placement == SIGNATURE_PLACEMENT_EXISTING_SECTION and _has_existing_signature_section(html):
+			if "doc.custom_signed_by or" in html and "doc.custom_signature_designation or" in html:
+				return "Existing signature section already uses digital signature values in {0}.".format(print_format.name)
+			updated_html = _insert_signature_values_into_existing_section(html)
+			success_message = "Digital signature values added to existing signature section in {0}.".format(print_format.name)
+		else:
+			if "dux_digital_signature.api.get_signature_qr_svg" in html:
+				return "Digital signature block already exists in {0}.".format(print_format.name)
+			updated_html = _insert_signature_block(html)
+			success_message = "Digital signature block added to {0}.".format(print_format.name)
 
 		_create_print_format_backup(print_format)
-		print_format.html = _insert_signature_block(print_format.html or "")
+		print_format.html = updated_html
 		print_format.save(ignore_permissions=True)
 		frappe.db.commit()
 
-		return "Digital signature block added to {0}.".format(print_format.name)
+		return success_message
 
 
 def create_signature_fields_for_doctype(doctype):
@@ -215,9 +239,52 @@ def _create_print_format_backup(print_format):
 
 	backup = frappe.copy_doc(print_format)
 	backup.name = backup_name
-	backup.print_format_name = backup_name
+	if backup.meta.has_field("print_format_name"):
+		backup.print_format_name = backup_name
 	backup.disabled = 1
 	backup.insert(ignore_permissions=True)
+
+
+def _get_or_create_custom_print_format(print_format):
+	custom_name = "{0} Digital Signature".format(print_format.name)
+	if frappe.db.exists("Print Format", custom_name):
+		custom_print_format = frappe.get_doc("Print Format", custom_name)
+		_sync_custom_print_format(custom_print_format, print_format)
+		return custom_print_format
+
+	custom_print_format = frappe.copy_doc(print_format)
+	custom_print_format.name = custom_name
+	custom_print_format.standard = "No"
+	if custom_print_format.meta.has_field("custom_format"):
+		custom_print_format.custom_format = 1
+	custom_print_format.disabled = 0
+	if custom_print_format.meta.has_field("print_format_name"):
+		custom_print_format.print_format_name = custom_name
+	custom_print_format.insert(ignore_permissions=True)
+	return custom_print_format
+
+
+def _sync_custom_print_format(custom_print_format, standard_print_format):
+	updated = False
+	for fieldname in ("doc_type", "module", "print_format_type", "html"):
+		if custom_print_format.get(fieldname) != standard_print_format.get(fieldname):
+			custom_print_format.set(fieldname, standard_print_format.get(fieldname))
+			updated = True
+
+	if custom_print_format.standard != "No":
+		custom_print_format.standard = "No"
+		updated = True
+
+	if custom_print_format.meta.has_field("custom_format") and not custom_print_format.custom_format:
+		custom_print_format.custom_format = 1
+		updated = True
+
+	if custom_print_format.disabled:
+		custom_print_format.disabled = 0
+		updated = True
+
+	if updated:
+		custom_print_format.save(ignore_permissions=True)
 
 
 def _insert_signature_block(html):
@@ -241,4 +308,41 @@ def _insert_signature_block(html):
 		html[:insert_index].rstrip(),
 		SIGNATURE_PRINT_BLOCK,
 		html[insert_index:].lstrip(),
+	)
+
+
+def _has_existing_signature_section(html):
+	return "For the Employer" in html and """<div class="sig-detail">
+          Name <span></span><br>
+          Designation <span></span><br>
+          Place <span></span> &nbsp; Date <span></span>
+        </div>""" in html
+
+
+def _insert_signature_values_into_existing_section(html):
+	employer_marker = "For the Employer"
+	blank_block = """<div class="sig-detail">
+          Name <span></span><br>
+          Designation <span></span><br>
+          Place <span></span> &nbsp; Date <span></span>
+        </div>"""
+
+	employer_index = html.find(employer_marker)
+	if employer_index == -1:
+		frappe.throw(
+			"Existing employer signature section was not found in the selected Print Format. "
+			"Use Default Signature Block or add the standard signature placeholders first."
+		)
+
+	block_index = html.find(blank_block, employer_index)
+	if block_index == -1:
+		frappe.throw(
+			"Existing signature placeholders were not found in the employer section. "
+			"Use Default Signature Block or update the print format signature section."
+		)
+
+	return "{0}{1}{2}".format(
+		html[:block_index],
+		EXISTING_SIGNATURE_SECTION_BLOCK,
+		html[block_index + len(blank_block):],
 	)
