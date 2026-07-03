@@ -160,6 +160,14 @@ class DigitalSignatureSetup(Document):
 			frappe.throw("Selected Print Format does not belong to {0}.".format(self.document_type))
 
 		signature_placement = self.signature_placement or SIGNATURE_PLACEMENT_DEFAULT
+		using_custom_copy = False
+		if print_format.standard == "Yes":
+			print_format = _get_or_create_custom_print_format(print_format)
+			using_custom_copy = True
+			self.print_format = print_format.name
+			if self.name:
+				self.db_set("print_format", print_format.name, update_modified=False)
+
 		html = print_format.html or ""
 		if signature_placement == SIGNATURE_PLACEMENT_EXISTING_SECTION and _has_existing_signature_section(html):
 			if "doc.custom_signed_by or" in html and "doc.custom_signature_designation or" in html:
@@ -176,6 +184,9 @@ class DigitalSignatureSetup(Document):
 		print_format.html = updated_html
 		print_format.save(ignore_permissions=True)
 		frappe.db.commit()
+
+		if using_custom_copy:
+			return "Standard Print Format copied and {0}".format(success_message[0].lower() + success_message[1:])
 
 		return success_message
 
@@ -241,6 +252,9 @@ def _create_print_format_backup(print_format):
 	backup.name = backup_name
 	if backup.meta.has_field("print_format_name"):
 		backup.print_format_name = backup_name
+	backup.standard = "No"
+	if backup.meta.has_field("custom_format"):
+		backup.custom_format = 1
 	backup.disabled = 1
 	backup.insert(ignore_permissions=True)
 
