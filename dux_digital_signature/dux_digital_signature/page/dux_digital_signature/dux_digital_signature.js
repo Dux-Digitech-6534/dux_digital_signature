@@ -1,5 +1,7 @@
 (function () {
 	const ROUTE = "dux-digital-signature";
+	const BODY_CLASS = "dux-digital-signature-fullwidth";
+	const STYLE_ID = "dux-digital-signature-html-style";
 	const FIELD_ROWS = [
 		["custom_is_digitally_signed", "Check"],
 		["custom_signed_by", "Data"],
@@ -12,8 +14,33 @@
 		["custom_signature_qr_data", "Long Text"],
 	];
 
+	function cleanupDigitalSignatureShell() {
+		document.body.classList.remove(BODY_CLASS);
+		const style = document.getElementById(STYLE_ID);
+		if (style) style.remove();
+	}
+
+	function isDigitalSignatureRoute() {
+		const route = frappe.get_route ? frappe.get_route() : [];
+		return route && route[0] === ROUTE;
+	}
+
+	function registerRouteCleanup() {
+		if (window.duxDigitalSignatureRouteCleanupRegistered) return;
+		window.duxDigitalSignatureRouteCleanupRegistered = true;
+
+		$(document).on("page-change", () => {
+			setTimeout(() => {
+				if (!isDigitalSignatureRoute()) cleanupDigitalSignatureShell();
+			}, 0);
+		});
+	}
+
+	registerRouteCleanup();
+
 	frappe.pages[ROUTE] = frappe.pages[ROUTE] || {};
 	frappe.pages[ROUTE].on_page_load = function (wrapper) {
+		cleanupDigitalSignatureShell();
 		const page = frappe.ui.make_app_page({
 			parent: wrapper,
 			title: "",
@@ -22,7 +49,7 @@
 
 		$(wrapper).find(".page-head").hide();
 		$(wrapper).addClass("dux-digital-signature-page");
-		$("body").addClass("dux-digital-signature-fullwidth");
+		document.body.classList.add(BODY_CLASS);
 		page.main.empty();
 		ensureStyle();
 
@@ -34,6 +61,11 @@
 		const ui = new DigitalSignatureUI(root);
 		ui.init();
 	};
+	frappe.pages[ROUTE].on_page_show = function () {
+		document.body.classList.add(BODY_CLASS);
+		ensureStyle();
+	};
+	frappe.pages[ROUTE].on_page_hide = cleanupDigitalSignatureShell;
 
 	class DigitalSignatureUI {
 		constructor(root) {
@@ -1020,9 +1052,9 @@
 	}
 
 	function ensureStyle() {
-		if (document.getElementById("dux-digital-signature-html-style")) return;
+		if (document.getElementById(STYLE_ID)) return;
 		const style = document.createElement("style");
-		style.id = "dux-digital-signature-html-style";
+		style.id = STYLE_ID;
 		style.textContent = `
 			@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 			:root {
@@ -1046,9 +1078,7 @@
 			body.dux-digital-signature-fullwidth .page-content,
 			body.dux-digital-signature-fullwidth .layout-main,
 			body.dux-digital-signature-fullwidth .layout-main-section-wrapper,
-			body.dux-digital-signature-fullwidth .layout-main-section,
-			body:has(#dux-digital-signature-root) .layout-main-section-wrapper,
-			body:has(#dux-digital-signature-root) .layout-main-section {
+			body.dux-digital-signature-fullwidth .layout-main-section {
 				padding: 0 !important;
 				margin: 0 !important;
 				max-width: none !important;
