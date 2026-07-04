@@ -126,8 +126,8 @@ SIGNATURE_FIELDS = [
 
 class DigitalSignatureSetup(Document):
 	def validate(self):
-		if self.signature_trigger == "On Final Approval" and not self.final_approval_state:
-			frappe.throw("Final Approval State is required when Signature Trigger is On Final Approval.")
+		self.signature_trigger = "On Submit"
+		self.final_approval_state = None
 
 		if self.signer == "Fixed User" and not self.fixed_user:
 			frappe.throw("Fixed User is required when Signer is Fixed User.")

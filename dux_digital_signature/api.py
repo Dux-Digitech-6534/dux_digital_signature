@@ -38,8 +38,8 @@ def apply_digital_signature(doc, method=None):
 		if not _should_apply_signature(doc, setup, method):
 			continue
 
-		_apply_signature_from_setup(doc, setup, method)
-		break
+		if _apply_signature_from_setup(doc, setup, method):
+			break
 
 
 def _get_enabled_setups(doctype):
@@ -50,6 +50,7 @@ def _get_enabled_setups(doctype):
 		"Digital Signature Setup",
 		filters={"enabled": 1, "document_type": doctype},
 		fields=["name", "signature_trigger", "final_approval_state", "signer", "fixed_user"],
+		order_by="modified desc",
 	)
 
 
@@ -69,28 +70,18 @@ def _should_apply_signature(doc, setup, method):
 	if setup.signature_trigger == "On Submit":
 		return method == "before_submit" and doc.docstatus == 1
 
-	if setup.signature_trigger == "On Final Approval":
-		if getattr(doc, "workflow_state", None) != setup.final_approval_state:
-			return False
-
-		if method == "on_update":
-			return bool(doc.has_value_changed("workflow_state"))
-
-		return method == "before_submit" and doc.docstatus == 1
-
 	return False
 
 
 def _apply_signature_from_setup(doc, setup, method):
-	signer = frappe.session.user if setup.signer == "Current User" else setup.fixed_user
+	signer = _resolve_signer_for_setup(setup)
 	if not signer:
-		frappe.log_error(
-			title="Digital Signature signer missing",
-			message=f"Digital Signature Setup {setup.name} did not resolve a signer for {doc.doctype} {doc.name}.",
-		)
-		return
+		return False
 
 	profile = _get_signer_profile(signer)
+	if not profile:
+		return False
+
 	signed_on = now()
 	hash_value = _build_hash(doc, signer, profile["full_name"], signed_on)
 	qr_data = _build_qr_data(doc, profile["full_name"], signed_on, hash_value)
@@ -114,6 +105,19 @@ def _apply_signature_from_setup(doc, setup, method):
 		for fieldname, value in values.items():
 			doc.set(fieldname, value)
 
+	return True
+
+
+def _resolve_signer_for_setup(setup):
+	submitting_user = frappe.session.user
+	if not submitting_user or submitting_user == "Guest":
+		return None
+
+	if setup.fixed_user and setup.fixed_user == submitting_user:
+		return submitting_user
+
+	return None
+
 
 def _get_signer_profile(signer):
 	profile_name = frappe.db.get_value(
@@ -122,22 +126,16 @@ def _get_signer_profile(signer):
 		"name",
 	)
 
-	if profile_name:
-		profile = frappe.get_doc("Digital Signature User", profile_name)
-		full_name = profile.full_name or frappe.db.get_value("User", signer, "full_name") or signer
-		return {
-			"full_name": full_name,
-			"designation": profile.designation or "",
-			"signature_text": profile.signature_text or f"Digitally signed by {full_name}",
-			"signature_image": profile.signature_image or "",
-		}
+	if not profile_name:
+		return None
 
-	full_name = frappe.db.get_value("User", signer, "full_name") or signer
+	profile = frappe.get_doc("Digital Signature User", profile_name)
+	full_name = profile.full_name or frappe.db.get_value("User", signer, "full_name") or signer
 	return {
 		"full_name": full_name,
-		"designation": "",
-		"signature_text": f"Digitally signed by {full_name}",
-		"signature_image": "",
+		"designation": profile.designation or "",
+		"signature_text": profile.signature_text or f"Digitally signed by {full_name}",
+		"signature_image": profile.signature_image or "",
 	}
 
 

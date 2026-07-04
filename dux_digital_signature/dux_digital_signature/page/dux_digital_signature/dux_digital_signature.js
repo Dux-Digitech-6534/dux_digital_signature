@@ -314,7 +314,7 @@
 			const signerMode = this.root.querySelector("[data-signer-mode]");
 			const sync = () => {
 				this.root.querySelector("[data-final-approval-field]").style.display =
-					trigger.value === "On Final Approval" ? "block" : "none";
+					"none";
 				const fixedUserField = this.root.querySelector("[data-fixed-user-field]");
 				if (fixedUserField) fixedUserField.style.display = "block";
 				if (signerMode) signerMode.value = "Fixed User";
@@ -538,7 +538,7 @@
 				this.root.querySelector("[data-setup-form-title]").textContent = `Edit Document Signature - ${doc.document_type || doc.name}`;
 				this.root.querySelector("[data-enabled]").checked = !!doc.enabled;
 				this.setDocumentType(doc.document_type || "");
-				this.root.querySelector("[data-trigger]").value = doc.signature_trigger || "On Submit";
+				this.root.querySelector("[data-trigger]").value = "On Submit";
 				this.root.querySelector("[data-final-approval]").value = doc.final_approval_state || "";
 				this.setFixedUser(doc.fixed_user || "");
 				this.setPrintFormat(doc.print_format || "");
@@ -742,8 +742,8 @@
 				name: this.activeSetup || this.root.querySelector("[data-current-setup]").value || undefined,
 				enabled: this.root.querySelector("[data-enabled]").checked ? 1 : 0,
 				document_type: this.getDocumentType(),
-				signature_trigger: this.root.querySelector("[data-trigger]").value,
-				final_approval_state: this.root.querySelector("[data-final-approval]").value,
+				signature_trigger: "On Submit",
+				final_approval_state: "",
 				signer: "Fixed User",
 				fixed_user: this.getFixedUser(),
 				print_format: this.getPrintFormat(),
@@ -793,8 +793,8 @@
 			}).then((doc) => {
 				doc.enabled = this.root.querySelector("[data-enabled]").checked ? 1 : 0;
 				doc.document_type = this.getDocumentType();
-				doc.signature_trigger = this.root.querySelector("[data-trigger]").value;
-				doc.final_approval_state = this.root.querySelector("[data-final-approval]").value;
+				doc.signature_trigger = "On Submit";
+				doc.final_approval_state = "";
 				doc.signer = "Fixed User";
 				doc.fixed_user = this.getFixedUser();
 				doc.print_format = this.getPrintFormat();
@@ -915,7 +915,6 @@
 												<label>Signature Trigger</label>
 												<select data-trigger>
 													<option>On Submit</option>
-													<option>On Final Approval</option>
 												</select>
 												<div class="hint">On Submit signs the document the moment it is submitted.</div>
 											</div>
