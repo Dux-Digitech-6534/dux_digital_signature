@@ -46,10 +46,14 @@ def _get_enabled_setups(doctype):
 	if not _doctype_table_exists("Digital Signature Setup"):
 		return []
 
+	fields = ["name", "signature_trigger", "final_approval_state", "signer", "fixed_user"]
+	if _doctype_column_exists("Digital Signature Setup", "signer_name"):
+		fields.append("signer_name")
+
 	return frappe.get_all(
 		"Digital Signature Setup",
 		filters={"enabled": 1, "document_type": doctype},
-		fields=["name", "signature_trigger", "final_approval_state", "signer", "fixed_user", "signer_name"],
+		fields=fields,
 		order_by="modified desc",
 	)
 
@@ -59,6 +63,13 @@ def _doctype_table_exists(doctype):
 		return frappe.db.table_exists(doctype)
 	except Exception:
 		return bool(frappe.db.exists("DocType", doctype))
+
+
+def _doctype_column_exists(doctype, column):
+	try:
+		return frappe.db.has_column(doctype, column)
+	except Exception:
+		return False
 
 
 def _has_signature_fields(doc):
@@ -113,7 +124,7 @@ def _resolve_signer_for_setup(setup):
 	if not submitting_user or submitting_user == "Guest":
 		return None
 
-	if setup.signer == "User" and setup.signer_name:
+	if setup.signer == "User" and getattr(setup, "signer_name", None):
 		return submitting_user
 
 	if setup.fixed_user and setup.fixed_user == submitting_user:
@@ -123,7 +134,7 @@ def _resolve_signer_for_setup(setup):
 
 
 def _get_signer_profile(signer, setup=None):
-	if setup and setup.signer == "User" and setup.signer_name:
+	if setup and setup.signer == "User" and getattr(setup, "signer_name", None):
 		full_name = setup.signer_name.strip()
 		if not full_name:
 			return None
