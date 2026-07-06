@@ -49,7 +49,7 @@ def _get_enabled_setups(doctype):
 	return frappe.get_all(
 		"Digital Signature Setup",
 		filters={"enabled": 1, "document_type": doctype},
-		fields=["name", "signature_trigger", "final_approval_state", "signer", "fixed_user"],
+		fields=["name", "signature_trigger", "final_approval_state", "signer", "fixed_user", "signer_name"],
 		order_by="modified desc",
 	)
 
@@ -78,7 +78,7 @@ def _apply_signature_from_setup(doc, setup, method):
 	if not signer:
 		return False
 
-	profile = _get_signer_profile(signer)
+	profile = _get_signer_profile(signer, setup)
 	if not profile:
 		return False
 
@@ -113,13 +113,27 @@ def _resolve_signer_for_setup(setup):
 	if not submitting_user or submitting_user == "Guest":
 		return None
 
+	if setup.signer == "User" and setup.signer_name:
+		return submitting_user
+
 	if setup.fixed_user and setup.fixed_user == submitting_user:
 		return submitting_user
 
 	return None
 
 
-def _get_signer_profile(signer):
+def _get_signer_profile(signer, setup=None):
+	if setup and setup.signer == "User" and setup.signer_name:
+		full_name = setup.signer_name.strip()
+		if not full_name:
+			return None
+		return {
+			"full_name": full_name,
+			"designation": "",
+			"signature_text": f"Digitally signed by {full_name}",
+			"signature_image": "",
+		}
+
 	profile_name = frappe.db.get_value(
 		"Digital Signature User",
 		{"user": signer, "is_active": 1},

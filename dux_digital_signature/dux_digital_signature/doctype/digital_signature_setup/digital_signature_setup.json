@@ -12,6 +12,7 @@
   "final_approval_state",
   "signer",
   "fixed_user",
+  "signer_name",
   "auto_create_fields",
   "print_format_section",
   "print_format",
@@ -55,8 +56,8 @@
    "fieldname": "signer",
    "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Signer",
-   "options": "Current User\nFixed User",
+   "label": "Signer Type",
+   "options": "Fixed User\nUser",
    "reqd": 1
   },
   {
@@ -66,6 +67,13 @@
    "label": "Fixed User",
    "mandatory_depends_on": "eval:doc.signer == 'Fixed User'",
    "options": "User"
+  },
+  {
+   "depends_on": "eval:doc.signer == 'User'",
+   "fieldname": "signer_name",
+   "fieldtype": "Data",
+   "label": "User",
+   "mandatory_depends_on": "eval:doc.signer == 'User'"
   },
   {
    "fieldname": "auto_create_fields",
@@ -93,11 +101,12 @@
    "options": "Create Custom Copy\nUpdate Selected Print Format"
   },
   {
-   "default": "Existing Print Format Signature Section",
+   "default": "Default Signature Block",
    "fieldname": "signature_placement",
    "fieldtype": "Select",
+   "hidden": 1,
    "label": "Signature Placement",
-   "options": "Default Signature Block\nExisting Print Format Signature Section"
+   "options": "Default Signature Block"
   },
   {
    "depends_on": "eval:doc.document_type && doc.print_format",

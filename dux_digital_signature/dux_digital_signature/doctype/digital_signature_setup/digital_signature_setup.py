@@ -3,7 +3,7 @@ from frappe.model.document import Document
 from frappe.utils import now
 
 
-SIGNATURE_PLACEMENT_DEFAULT = "Existing Print Format Signature Section"
+SIGNATURE_PLACEMENT_DEFAULT = "Default Signature Block"
 SIGNATURE_PLACEMENT_EXISTING_SECTION = "Existing Print Format Signature Section"
 PRINT_FORMAT_UPDATE_SELECTED = "Update Selected Print Format"
 
@@ -128,9 +128,59 @@ class DigitalSignatureSetup(Document):
 	def validate(self):
 		self.signature_trigger = "On Submit"
 		self.final_approval_state = None
+		self.signature_placement = SIGNATURE_PLACEMENT_DEFAULT
 
 		if self.signer == "Fixed User" and not self.fixed_user:
 			frappe.throw("Fixed User is required when Signer is Fixed User.")
+
+		if self.signer == "User" and not self.signer_name:
+			frappe.throw("User is required when Signer Type is User.")
+
+		if self.signer == "User":
+			self.fixed_user = None
+
+		self._validate_unique_setup()
+
+	def _validate_unique_setup(self):
+		if not self.document_type:
+			return
+
+		signer_value = ""
+		if self.signer == "Fixed User":
+			signer_value = self.fixed_user or ""
+		else:
+			signer_value = self.signer_name or ""
+
+		duplicate = frappe.db.sql(
+			"""
+			select name
+			from `tabDigital Signature Setup`
+			where document_type = %(document_type)s
+				and ifnull(print_format, '') = %(print_format)s
+				and signer = %(signer)s
+				and (
+					(%(signer)s = 'Fixed User' and ifnull(fixed_user, '') = %(signer_value)s)
+					or (%(signer)s = 'User' and ifnull(signer_name, '') = %(signer_value)s)
+				)
+				and name != %(name)s
+			limit 1
+			""",
+			{
+				"document_type": self.document_type,
+				"print_format": self.print_format or "",
+				"signer": self.signer,
+				"signer_value": signer_value,
+				"name": self.name or "",
+			},
+			as_dict=True,
+		)
+		duplicate = duplicate[0].name if duplicate else None
+		if duplicate and duplicate != self.name:
+			frappe.throw(
+				"Digital Signature Setup already exists for this Document Type, Print Format, and User: {0}".format(
+					duplicate
+				)
+			)
 
 	@frappe.whitelist()
 	def create_signature_fields(self):
@@ -159,7 +209,6 @@ class DigitalSignatureSetup(Document):
 		if print_format.doc_type != self.document_type:
 			frappe.throw("Selected Print Format does not belong to {0}.".format(self.document_type))
 
-		signature_placement = self.signature_placement or SIGNATURE_PLACEMENT_DEFAULT
 		using_custom_copy = False
 		if print_format.standard == "Yes":
 			print_format = _get_or_create_custom_print_format(print_format)
@@ -169,16 +218,11 @@ class DigitalSignatureSetup(Document):
 				self.db_set("print_format", print_format.name, update_modified=False)
 
 		html = print_format.html or ""
-		if signature_placement == SIGNATURE_PLACEMENT_EXISTING_SECTION and _has_existing_signature_section(html):
-			if "doc.custom_signed_by or" in html and "doc.custom_signature_designation or" in html:
-				return "Existing signature section already uses digital signature values in {0}.".format(print_format.name)
-			updated_html = _insert_signature_values_into_existing_section(html)
-			success_message = "Digital signature values added to existing signature section in {0}.".format(print_format.name)
-		else:
-			if "dux_digital_signature.api.get_signature_qr_svg" in html:
-				return "Digital signature block already exists in {0}.".format(print_format.name)
-			updated_html = _insert_signature_block(html)
-			success_message = "Digital signature block added to {0}.".format(print_format.name)
+		if "dux_digital_signature.api.get_signature_qr_svg" in html:
+			return "Digital signature block already exists in {0}.".format(print_format.name)
+
+		updated_html = _insert_signature_block(html)
+		success_message = "Digital signature block added to {0}.".format(print_format.name)
 
 		_create_print_format_backup(print_format)
 		print_format.html = updated_html

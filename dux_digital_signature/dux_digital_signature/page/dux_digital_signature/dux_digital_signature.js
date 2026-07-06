@@ -307,6 +307,7 @@
 			bind("[data-setup-user-filter]", "change", () => this.applySetupFilters());
 			bind("[data-document-type-fallback]", "change", () => this.updatePrintPreview());
 			bind("[data-fixed-user-fallback]", "change", () => this.updatePrintPreview());
+			bind("[data-manual-signer-name]", "input", () => this.updatePrintPreview());
 		}
 
 		bindConditionalFields() {
@@ -316,8 +317,11 @@
 				this.root.querySelector("[data-final-approval-field]").style.display =
 					"none";
 				const fixedUserField = this.root.querySelector("[data-fixed-user-field]");
-				if (fixedUserField) fixedUserField.style.display = "block";
-				if (signerMode) signerMode.value = "Fixed User";
+				const manualSignerField = this.root.querySelector("[data-manual-signer-field]");
+				const mode = this.getSignerMode();
+				if (fixedUserField) fixedUserField.style.display = mode === "Fixed User" ? "block" : "none";
+				if (manualSignerField) manualSignerField.style.display = mode === "User" ? "block" : "none";
+				this.updatePrintPreview();
 			};
 			trigger.addEventListener("change", sync);
 			if (signerMode) signerMode.addEventListener("change", sync);
@@ -360,7 +364,7 @@
 
 		loadSetups() {
 			frappe.db.get_list("Digital Signature Setup", {
-				fields: ["name", "document_type", "enabled", "signature_trigger", "signer", "fixed_user", "print_format", "is_setup_completed"],
+				fields: ["name", "document_type", "enabled", "signature_trigger", "signer", "fixed_user", "signer_name", "print_format", "is_setup_completed"],
 				limit: 100,
 				order_by: "modified desc",
 			}).then((rows) => {
@@ -373,10 +377,11 @@
 		}
 
 		loadSetupUserNames(rows) {
-			const users = [...new Set(rows.map((row) => row.fixed_user).filter(Boolean))];
+			const users = [...new Set(rows.map((row) => row.signer === "User" ? row.signer_name : row.fixed_user).filter(Boolean))];
 			if (!users.length) return Promise.resolve();
 
-			return Promise.all(users.map((user) => {
+			const fixedUsers = users.filter((user) => rows.some((row) => row.signer !== "User" && row.fixed_user === user));
+			return Promise.all(fixedUsers.map((user) => {
 				if (this.setupUserNames[user]) return Promise.resolve();
 				return frappe.db.get_value("User", user, "full_name").then((response) => {
 					this.setupUserNames[user] = (response.message && response.message.full_name) || user;
@@ -392,19 +397,24 @@
 			const currentDoc = docFilter.value;
 			const currentUser = userFilter.value;
 			const doctypes = [...new Set(this.setupRows.map((row) => row.document_type).filter(Boolean))].sort();
-			const users = [...new Set(this.setupRows.map((row) => row.fixed_user).filter(Boolean))].sort((a, b) => {
-				return (this.setupUserNames[a] || a).localeCompare(this.setupUserNames[b] || b);
+			const users = [...new Set(this.setupRows.map((row) => this.getSetupSignerLabel(row)).filter(Boolean))].sort((a, b) => {
+				return a.localeCompare(b);
 			});
 
 			docFilter.innerHTML = `<option value="">All Documents</option>${doctypes.map((doctype) => (
 				`<option value="${escapeAttr(doctype)}">${escapeHtml(doctype)}</option>`
 			)).join("")}`;
 			userFilter.innerHTML = `<option value="">All Users</option>${users.map((user) => (
-				`<option value="${escapeAttr(user)}">${escapeHtml(this.setupUserNames[user] || user)}</option>`
+				`<option value="${escapeAttr(user)}">${escapeHtml(user)}</option>`
 			)).join("")}`;
 
 			docFilter.value = doctypes.includes(currentDoc) ? currentDoc : "";
 			userFilter.value = users.includes(currentUser) ? currentUser : "";
+		}
+
+		getSetupSignerLabel(row) {
+			if (row.signer === "User") return row.signer_name || "";
+			return this.setupUserNames[row.fixed_user] || row.fixed_user || "";
 		}
 
 		applySetupFilters() {
@@ -412,19 +422,20 @@
 			const docFilter = this.root.querySelector("[data-setup-doc-filter]")?.value || "";
 			const userFilter = this.root.querySelector("[data-setup-user-filter]")?.value || "";
 			const rows = this.setupRows.filter((row) => {
-				const userName = this.setupUserNames[row.fixed_user] || row.fixed_user || "";
+				const userName = this.getSetupSignerLabel(row);
 				const searchable = [
 					row.name,
 					row.document_type,
 					row.signature_trigger,
 					row.print_format,
 					row.fixed_user,
+					row.signer_name,
 					userName,
 				].filter(Boolean).join(" ").toLowerCase();
 
 				return (!search || searchable.includes(search))
 					&& (!docFilter || row.document_type === docFilter)
-					&& (!userFilter || row.fixed_user === userFilter);
+					&& (!userFilter || userName === userFilter);
 			});
 			this.renderSetupSummary(rows);
 		}
@@ -442,7 +453,7 @@
 					<div>
 						<div class="setup-title">${escapeHtml(row.document_type || row.name)}</div>
 						<div class="setup-meta">${escapeHtml(row.signature_trigger || "")}${row.print_format ? ` - ${escapeHtml(row.print_format)}` : ""}</div>
-						<div class="setup-user">User: ${escapeHtml(this.setupUserNames[row.fixed_user] || row.fixed_user || "Not selected")}</div>
+						<div class="setup-user">User: ${escapeHtml(this.getSetupSignerLabel(row) || "Not selected")}</div>
 					</div>
 					<div class="setup-status">${badge(row.enabled ? "Enabled" : "Disabled", row.enabled ? "verified" : "slate")}</div>
 				</div>
@@ -502,16 +513,20 @@
 		showSetupList() {
 			const list = this.root.querySelector("[data-setup-list-view]");
 			const form = this.root.querySelector("[data-setup-form-view]");
+			const addButton = this.root.querySelector("[data-new-setup]");
 			if (list) list.style.display = "block";
 			if (form) form.style.display = "none";
+			if (addButton) addButton.style.display = "";
 			this.activeSetup = null;
 		}
 
 		showSetupForm() {
 			const list = this.root.querySelector("[data-setup-list-view]");
 			const form = this.root.querySelector("[data-setup-form-view]");
+			const addButton = this.root.querySelector("[data-new-setup]");
 			if (list) list.style.display = "none";
 			if (form) form.style.display = "block";
+			if (addButton) addButton.style.display = "none";
 		}
 
 		openNewSetup() {
@@ -522,10 +537,12 @@
 			this.setDocumentType("");
 			this.root.querySelector("[data-trigger]").value = "On Submit";
 			this.root.querySelector("[data-final-approval]").value = "";
+			this.setSignerMode("Fixed User");
 			this.setFixedUser("");
+			this.setManualSignerName("");
 			this.setPrintFormat("");
 			this.setPrintFormatUpdateMode("Update Selected Print Format");
-			this.setSignaturePlacement("Existing Print Format Signature Section");
+			this.setSignaturePlacement("Default Signature Block");
 			this.bindConditionalFields();
 			this.updatePrintPreview();
 			this.showSetupForm();
@@ -540,10 +557,12 @@
 				this.setDocumentType(doc.document_type || "");
 				this.root.querySelector("[data-trigger]").value = "On Submit";
 				this.root.querySelector("[data-final-approval]").value = doc.final_approval_state || "";
+				this.setSignerMode(doc.signer || "Fixed User");
 				this.setFixedUser(doc.fixed_user || "");
+				this.setManualSignerName(doc.signer_name || "");
 				this.setPrintFormat(doc.print_format || "");
 				this.setPrintFormatUpdateMode(doc.print_format_update_mode || "Update Selected Print Format");
-				this.setSignaturePlacement(doc.signature_placement || "Existing Print Format Signature Section");
+				this.setSignaturePlacement("Default Signature Block");
 				this.bindConditionalFields();
 				this.updatePrintPreview();
 				this.showSetupForm();
@@ -671,6 +690,26 @@
 			if (input) input.value = value || "";
 		}
 
+		getSignerMode() {
+			const input = this.root.querySelector("[data-signer-mode]");
+			return input ? input.value || "Fixed User" : "Fixed User";
+		}
+
+		setSignerMode(value) {
+			const input = this.root.querySelector("[data-signer-mode]");
+			if (input) input.value = value || "Fixed User";
+		}
+
+		getManualSignerName() {
+			const input = this.root.querySelector("[data-manual-signer-name]");
+			return input ? input.value.trim() : "";
+		}
+
+		setManualSignerName(value) {
+			const input = this.root.querySelector("[data-manual-signer-name]");
+			if (input) input.value = value || "";
+		}
+
 		getPrintFormat() {
 			if (this.printFormatControl) return this.printFormatControl.get_value();
 			const input = this.root.querySelector("[data-print-format-fallback]");
@@ -697,23 +736,29 @@
 		}
 
 		getSignaturePlacement() {
-			const input = this.root.querySelector("[data-signature-placement]");
-			return input ? input.value : "Existing Print Format Signature Section";
+			return "Default Signature Block";
 		}
 
 		setSignaturePlacement(value) {
 			const input = this.root.querySelector("[data-signature-placement]");
-			if (input) input.value = value || "Existing Print Format Signature Section";
+			if (input) input.value = "Default Signature Block";
 		}
 
 		updatePrintPreview() {
 			const documentType = this.getDocumentType() || "Document";
+			const signerMode = this.getSignerMode();
 			const fixedUser = this.getFixedUser();
+			const manualSigner = this.getManualSignerName();
 			const nameTarget = this.root.querySelector("[data-preview-signer]");
 			const detailTarget = this.root.querySelector("[data-preview-detail]");
 			const documentTarget = this.root.querySelector("[data-preview-document]");
 
 			documentTarget.textContent = `Document Type: ${documentType}`;
+			if (signerMode === "User") {
+				nameTarget.textContent = manualSigner || "Authorised Signatory";
+				detailTarget.textContent = "Designation";
+				return;
+			}
 			if (!fixedUser) {
 				nameTarget.textContent = "Authorised Signatory";
 				detailTarget.textContent = "Designation";
@@ -737,6 +782,7 @@
 		}
 
 		buildSetupDoc() {
+			const signerMode = this.getSignerMode();
 			return {
 				doctype: "Digital Signature Setup",
 				name: this.activeSetup || this.root.querySelector("[data-current-setup]").value || undefined,
@@ -744,11 +790,12 @@
 				document_type: this.getDocumentType(),
 				signature_trigger: "On Submit",
 				final_approval_state: "",
-				signer: "Fixed User",
-				fixed_user: this.getFixedUser(),
+				signer: signerMode,
+				fixed_user: signerMode === "Fixed User" ? this.getFixedUser() : "",
+				signer_name: signerMode === "User" ? this.getManualSignerName() : "",
 				print_format: this.getPrintFormat(),
 				print_format_update_mode: this.getPrintFormatUpdateMode(),
-				signature_placement: this.getSignaturePlacement(),
+				signature_placement: "Default Signature Block",
 			};
 		}
 
@@ -756,7 +803,14 @@
 			const doc = this.buildSetupDoc();
 			const fixedUser = doc.fixed_user;
 
-			return this.ensureFixedUserSigner(fixedUser)
+			const ensureSigner = doc.signer === "Fixed User" ? this.ensureFixedUserSigner(fixedUser) : Promise.resolve();
+			return this.findDuplicateSetup(doc)
+				.then((duplicate) => {
+					if (duplicate) {
+						frappe.throw(`Digital Signature Setup already exists for this Document Type, Print Format, and User: ${duplicate.name}`);
+					}
+				})
+				.then(() => ensureSigner)
 				.then(() => (doc.name ? frappe.db.get_doc("Digital Signature Setup", doc.name) : doc))
 				.then((latestDoc) => {
 					const setupDoc = Object.assign(latestDoc, doc);
@@ -778,6 +832,28 @@
 				});
 		}
 
+		findDuplicateSetup(doc) {
+			if (!doc.document_type) return Promise.resolve(null);
+
+			const signerValue = doc.signer === "User" ? doc.signer_name : doc.fixed_user;
+			const printFormat = doc.print_format || "";
+
+			return frappe.db.get_list("Digital Signature Setup", {
+				fields: ["name", "document_type", "print_format", "signer", "fixed_user", "signer_name"],
+				filters: {
+					document_type: doc.document_type,
+					signer: doc.signer,
+				},
+				limit: 100,
+			}).then((rows) => {
+				return (rows || []).find((row) => {
+					if (row.name === doc.name) return false;
+					const rowSignerValue = row.signer === "User" ? row.signer_name : row.fixed_user;
+					return (row.print_format || "") === printFormat && (rowSignerValue || "") === (signerValue || "");
+				}) || null;
+			});
+		}
+
 		createFields() {
 			this.callSetupMethod("create_signature_fields", "Signature fields updated.");
 		}
@@ -791,15 +867,17 @@
 				const setup = this.root.querySelector("[data-current-setup]").value;
 				return frappe.db.get_doc("Digital Signature Setup", setup);
 			}).then((doc) => {
+				const signerMode = this.getSignerMode();
 				doc.enabled = this.root.querySelector("[data-enabled]").checked ? 1 : 0;
 				doc.document_type = this.getDocumentType();
 				doc.signature_trigger = "On Submit";
 				doc.final_approval_state = "";
-				doc.signer = "Fixed User";
-				doc.fixed_user = this.getFixedUser();
+				doc.signer = signerMode;
+				doc.fixed_user = signerMode === "Fixed User" ? this.getFixedUser() : "";
+				doc.signer_name = signerMode === "User" ? this.getManualSignerName() : "";
 				doc.print_format = this.getPrintFormat();
 				doc.print_format_update_mode = this.getPrintFormatUpdateMode();
-				doc.signature_placement = this.getSignaturePlacement();
+				doc.signature_placement = "Default Signature Block";
 
 				frappe.call({
 					method: "run_doc_method",
@@ -855,19 +933,17 @@
 				<div class="content">
 					<section class="view active" id="view-doctype">
 						<div class="page-title">
-							<div class="title-rule"></div>
 							<div>
-								<div class="eyebrow">Setup - Signature workflow</div>
-								<h1>Document Signatures</h1>
+								<h1>Document signatures</h1>
 								<p>Pick a document type, choose the fixed signer and when signing should happen, then place the signature on your fields and print format.</p>
 							</div>
+							<button class="btn-add" data-new-setup type="button">+ Add New</button>
 						</div>
 
 						<div data-setup-list-view>
 							<div class="card">
 								<div class="card-head row-between">
 									<h3>Document Signature List</h3>
-									<button class="btn btn-primary btn-sm" data-new-setup>+ Add New</button>
 								</div>
 								<div class="list-filters">
 									<div class="field">
@@ -903,7 +979,6 @@
 											<button class="link-backup section-back" data-cancel-setup type="button">Back To List</button>
 										</div>
 										<input type="hidden" data-current-setup>
-										<input type="hidden" data-signer-mode value="Fixed User">
 										<div class="field-grid">
 											<div class="field field-required span-2">
 												<label>Document Type</label>
@@ -926,11 +1001,25 @@
 												</div>
 											</div>
 
+											<div class="field field-required span-2">
+												<label>Signer Type</label>
+												<select data-signer-mode>
+													<option>Fixed User</option>
+													<option>User</option>
+												</select>
+											</div>
+
 											<div class="field field-required span-2" data-fixed-user-field>
 												<label>Fixed User</label>
 												<div data-fixed-user-control></div>
 												<input type="text" data-fixed-user-fallback placeholder="user@example.com">
 												<div class="hint">A signer profile is created automatically the first time this setup is saved.</div>
+											</div>
+
+											<div class="field field-required span-2" data-manual-signer-field style="display:none;">
+												<label>User</label>
+												<input type="text" data-manual-signer-name placeholder="Enter signer name">
+												<div class="hint">This name will appear on the digital signature.</div>
 											</div>
 
 											<div class="field span-2">
@@ -966,13 +1055,6 @@
 											<label>Print Format</label>
 											<div data-print-format-control></div>
 											<input type="text" data-print-format-fallback placeholder="Select Print Format">
-										</div>
-										<div class="field" style="margin-bottom:18px;">
-											<label>Signature Placement</label>
-											<select data-signature-placement>
-												<option value="Existing Print Format Signature Section">Existing Print Format Signature Section</option>
-												<option value="Default Signature Block">QR Digital Signature Block</option>
-											</select>
 										</div>
 										<div class="pf-actions">
 											<button class="btn-add-block" data-add-print>Add Signature Block</button>
@@ -1663,6 +1745,320 @@
 				.topbar { gap:12px; padding:0 14px; }
 				.topbar-spacer { display:none; }
 				.content { padding:24px 14px 60px; }
+			}
+
+			/* Reference redesign overrides: visual-only, keeps data attributes and actions intact. */
+			:root {
+				--ds-text-primary:#111827;
+				--ds-text-secondary:#4b5563;
+				--ds-text-muted:#9ca3af;
+				--ds-text-accent:#2563eb;
+				--ds-border:#e5e7eb;
+				--ds-border-strong:#d1d5db;
+				--ds-page:#f9fafb;
+				--ds-card:#ffffff;
+				--ds-success-bg:#dcfce7;
+				--ds-success:#15803d;
+				--ds-success-dot:#22c55e;
+				--ds-green:#15803d;
+				--ds-green-hover:#126b30;
+				--ds-radius:8px;
+			}
+			#dux-digital-signature-root {
+				background:var(--ds-page) !important;
+				color:var(--ds-text-primary);
+				font-family:Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+				font-size:14px;
+			}
+			#dux-digital-signature-root h1,
+			#dux-digital-signature-root h2,
+			#dux-digital-signature-root h3,
+			#dux-digital-signature-root .setup-title,
+			#dux-digital-signature-root .signer-name,
+			#dux-digital-signature-root .sig-card .name {
+				font-family:Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+			}
+			.content {
+				max-width:980px !important;
+				padding:32px 24px 72px !important;
+				margin:0 auto !important;
+			}
+			.page-title {
+				display:grid !important;
+				grid-template-columns:minmax(0, 1fr) auto !important;
+				gap:16px !important;
+				align-items:start !important;
+				max-width:none !important;
+				margin:0 0 20px !important;
+			}
+			.title-rule,
+			.eyebrow { display:none !important; }
+			.page-title h1 {
+				font-size:22px !important;
+				font-weight:600 !important;
+				line-height:1.25 !important;
+				color:var(--ds-text-primary) !important;
+				margin:0 0 4px !important;
+			}
+			.page-title p {
+				font-size:13px !important;
+				line-height:1.45 !important;
+				color:var(--ds-text-secondary) !important;
+				max-width:520px !important;
+				margin:0 !important;
+			}
+			.btn-add {
+				background:var(--ds-green);
+				color:#fff;
+				border:0;
+				padding:9px 16px;
+				border-radius:var(--ds-radius);
+				font-size:14px;
+				font-weight:500;
+				cursor:pointer;
+				white-space:nowrap;
+				align-self:start;
+			}
+			.btn-add:hover { background:var(--ds-green-hover); }
+			.card,
+			.section,
+			.preview-card {
+				background:var(--ds-card) !important;
+				border:1px solid var(--ds-border) !important;
+				border-radius:12px !important;
+				box-shadow:none !important;
+				overflow:hidden;
+			}
+			.card-head {
+				background:var(--ds-card) !important;
+				border-bottom:1px solid var(--ds-border) !important;
+				padding:20px !important;
+			}
+			.card-head h3,
+			.section-head h2,
+			.preview-card h2 {
+				font-size:15px !important;
+				font-weight:600 !important;
+				color:var(--ds-text-primary) !important;
+			}
+			.list-filters {
+				display:grid !important;
+				grid-template-columns:2fr 1fr 1fr !important;
+				gap:16px !important;
+				padding:14px 16px !important;
+				border-bottom:1px solid var(--ds-border) !important;
+				background:#fff !important;
+			}
+			.field label {
+				font-size:12px !important;
+				color:var(--ds-text-secondary) !important;
+				font-weight:500 !important;
+			}
+			.field input[type=text],
+			.field select,
+			.field textarea {
+				height:36px;
+				border:1px solid var(--ds-border-strong) !important;
+				border-radius:var(--ds-radius) !important;
+				background:#fff !important;
+				color:var(--ds-text-primary) !important;
+				font-size:14px !important;
+				padding:0 12px !important;
+			}
+			.field textarea { height:auto; padding:10px 12px !important; }
+			.field input:focus,
+			.field select:focus,
+			.field textarea:focus {
+				border-color:var(--ds-text-accent) !important;
+				box-shadow:0 0 0 3px rgba(37, 99, 235, .12) !important;
+				outline:none !important;
+			}
+			.ds-link-control-ready input,
+			.ds-link-control-ready .link-field {
+				min-height:36px !important;
+				height:36px !important;
+				border:1px solid var(--ds-border-strong) !important;
+				border-radius:var(--ds-radius) !important;
+				font-size:14px !important;
+				box-shadow:none !important;
+			}
+			.setup-row {
+				display:flex !important;
+				align-items:center !important;
+				justify-content:space-between !important;
+				gap:16px !important;
+				padding:14px 16px !important;
+				border-bottom:1px solid var(--ds-border) !important;
+				background:#fff !important;
+			}
+			.setup-row:hover { background:#f9fafb !important; }
+			.setup-title {
+				font-size:14px !important;
+				font-weight:500 !important;
+				color:var(--ds-text-accent) !important;
+				margin:0 0 2px !important;
+			}
+			.setup-meta {
+				font-size:13px !important;
+				color:var(--ds-text-secondary) !important;
+				margin:0 !important;
+			}
+			.setup-user {
+				font-size:12px !important;
+				color:var(--ds-text-muted) !important;
+				margin:2px 0 0 !important;
+			}
+			.badge {
+				background:var(--ds-success-bg) !important;
+				color:var(--ds-success) !important;
+				font-size:12px !important;
+				font-weight:500 !important;
+				padding:4px 10px !important;
+				border-radius:999px !important;
+			}
+			.badge-dot { background:var(--ds-success-dot) !important; }
+			.setup-layout {
+				display:grid !important;
+				grid-template-columns:1.6fr 1fr !important;
+				gap:20px !important;
+				align-items:start !important;
+			}
+			.form-col { gap:12px !important; }
+			.section {
+				padding:20px !important;
+				margin:0 !important;
+			}
+			.section-head {
+				margin-bottom:18px !important;
+				padding-bottom:14px !important;
+				border-bottom:1px solid var(--ds-border) !important;
+			}
+			.roman {
+				color:var(--ds-text-muted) !important;
+				font-family:Inter, sans-serif !important;
+				font-size:13px !important;
+			}
+			.link-backup,
+			.btn-cancel {
+				color:var(--ds-text-accent) !important;
+				font-size:13px !important;
+				text-decoration:none !important;
+				font-weight:500 !important;
+			}
+			.field-grid {
+				display:block !important;
+			}
+			.field {
+				margin-bottom:18px !important;
+				gap:6px !important;
+			}
+			.field:last-child { margin-bottom:0 !important; }
+			.field .hint,
+			.preview-card .sub,
+			.footer-bar .note {
+				font-size:12px !important;
+				color:var(--ds-text-muted) !important;
+			}
+			.active-toggle {
+				border:1px solid var(--ds-border) !important;
+				background:#fff !important;
+				border-radius:var(--ds-radius) !important;
+				padding:12px !important;
+			}
+			.map-btn {
+				background:#fff !important;
+				color:var(--ds-text-primary) !important;
+				border:1px solid var(--ds-border-strong) !important;
+				border-radius:var(--ds-radius) !important;
+				padding:9px 14px !important;
+				font-size:13px !important;
+				font-weight:500 !important;
+			}
+			.map-btn:hover { border-color:var(--ds-text-accent) !important; color:var(--ds-text-accent) !important; }
+			.preview-col {
+				position:sticky !important;
+				top:24px !important;
+			}
+			.preview-card {
+				padding:20px !important;
+			}
+			.btn-add-block,
+			.btn-save {
+				background:var(--ds-green) !important;
+				border:0 !important;
+				border-radius:var(--ds-radius) !important;
+				color:#fff !important;
+				font-size:14px !important;
+				font-weight:500 !important;
+				padding:10px 16px !important;
+			}
+			.btn-add-block:hover,
+			.btn-save:hover { background:var(--ds-green-hover) !important; }
+			.preview-divider {
+				margin:22px 0 12px !important;
+			}
+			.preview-divider span {
+				font-size:11px !important;
+				letter-spacing:.04em !important;
+				color:var(--ds-text-muted) !important;
+			}
+			.preview-divider::before,
+			.preview-divider::after {
+				background:var(--ds-border) !important;
+			}
+			.sig-card.preview-original {
+				background:var(--ds-success-bg) !important;
+				border:1px solid #bbf7d0 !important;
+				border-radius:var(--ds-radius) !important;
+				border-left:1px solid #bbf7d0 !important;
+				padding:14px 16px !important;
+				display:flex !important;
+				gap:12px !important;
+			}
+			.sig-card .qr {
+				width:40px !important;
+				height:40px !important;
+				border:1px solid #bbf7d0 !important;
+				border-radius:6px !important;
+			}
+			.sig-card .qr svg {
+				width:28px !important;
+				height:28px !important;
+			}
+			.signed-tag {
+				font-size:10px !important;
+				font-weight:600 !important;
+				color:var(--ds-success) !important;
+				letter-spacing:.04em !important;
+				margin-bottom:2px !important;
+			}
+			.signer-name {
+				font-size:14px !important;
+				font-weight:600 !important;
+				color:var(--ds-text-primary) !important;
+			}
+			.signer-role,
+			.doc-line {
+				font-size:12px !important;
+				color:var(--ds-text-secondary) !important;
+				margin-top:1px !important;
+				margin-bottom:0 !important;
+			}
+			.preview-original .hash {
+				font-size:11px !important;
+				color:#b45309 !important;
+			}
+			.footer-bar {
+				margin-top:18px !important;
+				padding-top:12px !important;
+				border-top:1px solid var(--ds-border) !important;
+			}
+			@media (max-width:760px) {
+				.page-title,
+				.setup-layout { grid-template-columns:1fr !important; }
+				.btn-add { width:max-content; }
+				.preview-col { position:static !important; }
+				.list-filters { grid-template-columns:1fr !important; }
 			}
 		`;
 		document.head.appendChild(style);
