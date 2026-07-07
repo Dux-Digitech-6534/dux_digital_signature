@@ -18,7 +18,7 @@ SIGNATURE_PRINT_BLOCK = """{% if doc.custom_is_digitally_signed %}
             </div>
             {% endif %}
         </div>
-        <div style="flex:1;min-width:0;text-align:right;">
+        <div style="flex:1;min-width:0;text-align:left;">
             <div style="font-weight:700;color:#2f9e44;letter-spacing:.5px;margin-bottom:3px;">&#10003; DIGITALLY SIGNED</div>
             <div style="font-size:13px;font-weight:700;color:#111827;">{{ doc.custom_signed_by or "" }}</div>
             <div>{{ doc.custom_signature_designation or "" }}</div>

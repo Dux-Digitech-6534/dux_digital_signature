@@ -774,10 +774,28 @@
 		}
 
 		saveSetup() {
-			this.persistSetup().then(() => {
+			this.persistSetup().then(() => this.createFieldsAfterSave()).then(() => {
 				frappe.show_alert({ message: "Setup saved", indicator: "green" });
 				this.loadSetups();
 				this.showSetupList();
+			});
+		}
+
+		createFieldsAfterSave() {
+			const setup = this.root.querySelector("[data-current-setup]").value;
+			if (!setup) return Promise.resolve();
+
+			return frappe.db.get_doc("Digital Signature Setup", setup).then((doc) => {
+				return new Promise((resolve) => {
+					frappe.call({
+						method: "run_doc_method",
+						args: {
+							docs: JSON.stringify(doc),
+							method: "create_signature_fields",
+						},
+						callback: () => resolve(),
+					});
+				});
 			});
 		}
 
@@ -1004,8 +1022,8 @@
 											<div class="field field-required span-2">
 												<label>Signer Type</label>
 												<select data-signer-mode>
-													<option>Fixed User</option>
-													<option>User</option>
+													<option value="Fixed User">User Wise Signature Fixed</option>
+													<option value="User">Signature Fixed For All User</option>
 												</select>
 											</div>
 
@@ -1035,7 +1053,7 @@
 										</div>
 									</section>
 
-									<section class="section">
+									<section class="section" style="display:none;">
 										<div class="section-head">
 											<span class="roman">II.</span>
 											<h2>Target fields</h2>
@@ -1917,6 +1935,19 @@
 				border-radius:999px !important;
 			}
 			.badge-dot { background:var(--ds-success-dot) !important; }
+			.setup-layout,
+			.form-col,
+			.section {
+				overflow:visible !important;
+			}
+			.field:focus-within {
+				position:relative;
+				z-index:1000;
+			}
+			.awesomplete > ul,
+			.ds-search-results.open {
+				z-index:1001 !important;
+			}
 			.setup-layout {
 				display:grid !important;
 				grid-template-columns:1.6fr 1fr !important;
